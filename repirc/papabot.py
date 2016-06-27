@@ -9,7 +9,12 @@ import sys
 
 class Bot(threading.Thread):
 
-	def __init__(self, host, port, nick, channel, username='papabot', realname='papabot', hostname='bot', servername='bot'):
+	def __init__(self, host, port, nick, channel,
+			charset='utf-8',
+			username='papabot',
+			realname='papabot',
+			hostname='bot',
+			servername='bot'):
 		super(Bot, self).__init__()
 		self.setDaemon(True)
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -21,6 +26,7 @@ class Bot(threading.Thread):
 		self.realname = realname
 		self.hostname = hostname
 		self.servername = servername
+		self.charset = charset
 		self.logfile = open('/tmp/log.txt', 'a+')
 
 	def connect(self):
@@ -38,14 +44,33 @@ class Bot(threading.Thread):
 		self.sock.send(command + '\n')
 
 	def msg(self, msg):
-		#self.sock.send("PRIVMSG " + self.channel + " " + msg + '\n')
+		msg = msg.encode(self.charset)
 		str = "PRIVMSG {channel} {msg}\n".format(channel=self.channel, msg=msg)
 		self.sock.send(str)
 		self.log("(my_msg) " + str)
 
 	def log(self, txt):
+		# TODO: 日時追加
+		txt = txt.rstrip("\n")
+		print txt
+		txt = txt + "\n"
 		self.logfile.write(txt)
 		self.logfile.flush()
+
+	def msg_bot(self, msg):
+		nickname = msg[0].lstrip(":").split("@")[0].split("!")[0]
+		username = msg[0].lstrip(":").split("@")[0].split("!")[1]
+		client = msg[0].lstrip(":").split("@")[1]
+		channel = msg[2]
+		terms = " ".join(msg[3:]).decode(self.charset).lstrip(":").rstrip("\n")
+
+		# ここにbotロジックを追加していく #
+		# (プラグイン化できたらいいなぁ)  # 
+
+		if terms.find("bot") >= 0:
+			self.msg(u"私がbotだ。")
+
+		###################################
 
 	def recv(self):
 		buffer = self.sock.recv(1024)
@@ -55,27 +80,21 @@ class Bot(threading.Thread):
 		if msg[0] == "PING":
 			self.send("PONG %s" % msg[1])
 		if msg[1] == 'PRIVMSG':
-			nickname = msg[0].lstrip(":").split("@")[0].split("!")[0]
-			username = msg[0].lstrip(":").split("@")[0].split("!")[1]
-			client = msg[0].lstrip(":").split("@")[1]
-			channel = msg[2]
-			terms = " ".join(msg[3:]).lstrip(":").rstrip("\n")
-			print "{nick}({user}) by {client}:{ch}:{terms}".format( \
-				nick=nickname,
-				user=username,
-				client=client,
-				ch=channel,
-				terms=terms)
+			self.msg_bot(msg)
 
 	def run(self):
 
+		self.log("charset: {charset}".format(charset=self.charset))
 		self.connect()
 		self.login()
-		print "server logined."
-		time.sleep(3)
+		self.log("server logined.")
+
+		# TODO:いずれsleepじゃない方法になおす。
+		time.sleep(10)
+
 		self.join()
-		print "channel joinned."
-		print "started recieving message..."
+		self.log("channel joinned.")
+		self.log("started recieving message...")
 		while (1):
 			self.recv()
 
@@ -104,13 +123,19 @@ def main():
 		metavar="<channel>",
 		default="#nfv",
 		help="Login channel name")
+	parser.add_argument("-e", "--charset",
+		type=str,
+		metavar="<charset>",
+		default="utf-8",
+		help="Server charset(default: utf-8)")
 	args = parser.parse_args()
 
-	bot = Bot(args.server, args.port, args.nickname, args.channel)
+	bot = Bot(args.server, args.port, args.nickname, args.channel, charset=args.charset)
 	bot.start()
 	while True:
 		line = sys.stdin.readline()
-		bot.msg(line.rstrip("\n"))
+		bot.msg(line.rstrip("\n").decode('utf-8'))
 
 if __name__ == '__main__':
 	main()
+
